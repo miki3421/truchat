@@ -1,5 +1,5 @@
 from openai import OpenAI
-import os, socket, time, json, pathlib
+import os, socket, time, json, pathlib, re
 
 # load the instruction file
 # the file format is:
@@ -54,21 +54,28 @@ class LLM:
         sock = None
         host = args.get("STREAM_HOST", "")
         port = int(args.get("STREAM_PORT") or "0")
-        if host and port:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.connect((host,port))
         try:
+            if host and port:
+                token = args.get("STREAM_TOKEN")
+                if token is not None and (not isinstance(token, str) or not re.fullmatch(r"[a-f0-9]{64}", token)):
+                    raise ValueError("Invalid STREAM_TOKEN")
+                sock = socket.create_connection((host, port), timeout=5)
+                sock.settimeout(10)
+                # Per-invocation capability supplied by Streamer, never a .env secret.
+                # Send before iterating: the model may take time to produce output.
+                if token is not None:
+                    sock.sendall(("OPS-STREAM " + token + "\n").encode("ascii"))
             for line in lines:
                 if sock is not None:
-                    #print(line + ":" + line.encode().hex())
-                    sock.sendall(json.dumps(line).encode("utf-8"))
+                    sock.sendall((json.dumps(line, ensure_ascii=False) + "\n").encode("utf-8"))
                     time.sleep(self.rate)
                 out += line
         except Exception as e:
             print(e)
             print("interrupted")
-        if sock is not None:
-            sock.close()
+        finally:
+            if sock is not None:
+                sock.close()
         return out
 
     def _ask(self, inp):

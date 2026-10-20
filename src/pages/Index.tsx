@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { marked } from "marked";
+import { createChatStreamParser } from "@/lib/chat-stream";
 
 // Configure marked with tables enabled
 marked.setOptions({
@@ -83,49 +84,32 @@ const Index = () => {
         throw new Error("No response body");
       }
 
-      const decoder = new TextDecoder();
       let accumulated = "";
+      const parser = createChatStreamParser((text) => {
+        accumulated += text;
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId ? { ...m, content: accumulated } : m
+          )
+        );
+      });
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-        // Parse streaming JSON - each chunk is a JSON string like "Hello"
-        // Split by newlines and parse each line
-        const lines = chunk.split('\n').filter(line => line.trim());
-        for (const line of lines) {
-          try {
-            const parsed = JSON.parse(line);
-            // The parsed result is just the string content
-            if (typeof parsed === 'string') {
-              accumulated += parsed;
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantId ? { ...m, content: accumulated } : m
-                )
-              );
-            }
-          } catch {
-            // Skip invalid JSON
-          }
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          parser.push(value);
+        }
+        parser.finish();
+      } finally {
+        try {
+          await reader.cancel();
+        } finally {
+          reader.releaseLock();
         }
       }
-
-      // If no streaming content received, try to parse as regular JSON response
       if (!accumulated) {
-        const text = decoder.decode();
-        try {
-          const data = JSON.parse(text);
-          accumulated = data.output || data.message || "No response received";
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId ? { ...m, content: accumulated } : m
-            )
-          );
-        } catch {
-          // Keep empty if nothing parsed
-        }
+        throw new Error("No chat response received");
       }
     } catch (error) {
       // Don't show error toast if user aborted the request

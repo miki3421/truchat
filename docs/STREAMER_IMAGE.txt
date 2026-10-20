@@ -1,0 +1,1 @@
+ghcr.io/miki3421/openserverless-streamer@sha256:f8375da5f04d53878cfab9eeaf068addc3d2673cc897d06bebfc01c629dc71f1

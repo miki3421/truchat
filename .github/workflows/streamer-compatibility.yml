@@ -1,0 +1,35 @@
+name: TruChat Streamer compatibility
+on:
+  push:
+    branches: [advanced]
+    paths:
+      - 'packages/v1/chat/**'
+      - 'src/**'
+      - 'compatibility_tests/**'
+      - 'package*.json'
+      - '.github/workflows/streamer-compatibility.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    if: github.repository == 'miki3421/truchat'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: '1.3.14'
+      - name: Python protocol tests without credentials or AI
+        run: python3 -B -m unittest discover -s compatibility_tests -p 'test_*.py' -v
+      - name: Browser stream parser tests
+        run: bun test compatibility_tests/chat-stream.test.ts
+      - name: Frontend build and type check
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build
+          ./node_modules/.bin/tsc -p tsconfig.app.json --noEmit
+      - name: Real Streamer transport smoke
+        run: python3 -B compatibility_tests/smoke_streamer.py --image ghcr.io/miki3421/openserverless-streamer@sha256:f8375da5f04d53878cfab9eeaf068addc3d2673cc897d06bebfc01c629dc71f1
