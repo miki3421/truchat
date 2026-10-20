@@ -72,15 +72,24 @@ def main():
         docker("network", "create", network)
         created_network = True
         configuration = json.loads(docker("network", "inspect", network))[0]
+        subnet = configuration["IPAM"]["Config"][0]["Subnet"]
+        # Let Docker select a free subnet, then make it explicit. Newer Docker
+        # versions reject static endpoint IPs on automatically configured IPAM.
+        docker("network", "rm", network)
+        created_network = False
+        docker("network", "create", "--subnet", subnet, network)
+        created_network = True
+        configuration = json.loads(docker("network", "inspect", network))[0]
         gateway = configuration["IPAM"]["Config"][0]["Gateway"]
         address = str(ipaddress.ip_address(gateway) + 1)
         upstream = ThreadingHTTPServer((gateway, 0), Controller)
         threading.Thread(target=upstream.serve_forever, daemon=True).start()
-        docker("run", "-d", "--name", name, "--network", network, "--ip", address,
+        docker("create", "--name", name, "--network", network, "--ip", address,
                "-p", "127.0.0.1::8080", "-e", "HTTP_SERVER_PORT=8080",
                "-e", "STREAMER_ADDR=" + address,
                "-e", f"OW_APIHOST=http://{gateway}:{upstream.server_port}", args.image)
         created_container = True
+        docker("start", name)
         host_port = docker("port", name, "8080/tcp")
         origin = "http://" + host_port
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
