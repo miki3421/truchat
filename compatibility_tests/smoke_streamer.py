@@ -73,14 +73,13 @@ def main():
         created_network = True
         configuration = json.loads(docker("network", "inspect", network))[0]
         subnet = configuration["IPAM"]["Config"][0]["Subnet"]
+        gateway = str(ipaddress.ip_network(subnet).network_address + 1)
         # Let Docker select a free subnet, then make it explicit. Newer Docker
         # versions reject static endpoint IPs on automatically configured IPAM.
         docker("network", "rm", network)
         created_network = False
-        docker("network", "create", "--subnet", subnet, network)
+        docker("network", "create", "--subnet", subnet, "--gateway", gateway, network)
         created_network = True
-        configuration = json.loads(docker("network", "inspect", network))[0]
-        gateway = configuration["IPAM"]["Config"][0]["Gateway"]
         address = str(ipaddress.ip_address(gateway) + 1)
         upstream = ThreadingHTTPServer((gateway, 0), Controller)
         threading.Thread(target=upstream.serve_forever, daemon=True).start()
