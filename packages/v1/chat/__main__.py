@@ -4,6 +4,9 @@
 #--param AI_API_KEY "$AI_API_KEY"
 #--param AI_BASE_URL "$AI_BASE_URL"
 #--param AI_CHAT_MODEL "$AI_CHAT_MODEL"
+#--param REDIS_URL "$REDIS_URL"
+#--param REDIS_PREFIX "$REDIS_PREFIX"
+#--param POSTGRES_URL "$POSTGRES_URL"
 
 import chat
 def main(args):

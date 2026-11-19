@@ -1,3 +1,4 @@
+import backup_probe
 import llm
 import re
 import traceback
@@ -10,16 +11,19 @@ def dump(args):
 
 def chat(args):
   inp = args.get("input", "")
+  command = backup_probe.command(inp)
 
   try:
-    ai = llm.LLM(args)
-
-    if inp == "":
-      out = ai.welcome(args)
-    elif inp == "@":
-      out = ai.rag(args)
+    if command:
+      out = llm.stream_output(args, backup_probe.reply(args, command))
     else:
-      out = ai.ask(args, inp)
+      ai = llm.LLM(args)
+      if inp == "":
+        out = ai.welcome(args)
+      elif inp == "@":
+        out = ai.rag(args)
+      else:
+        out = ai.ask(args, inp)
 
   except Exception as e:
     traceback.print_exc()

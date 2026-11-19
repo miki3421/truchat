@@ -1,5 +1,35 @@
 from openai import OpenAI
 import os, socket, time, json, pathlib, re
+from backup_probe import chat_history
+
+
+def stream_output(args, lines, rate=0.01):
+    out = ""
+    sock = None
+    host = args.get("STREAM_HOST", "")
+    port = int(args.get("STREAM_PORT") or "0")
+    try:
+        if host and port:
+            token = args.get("STREAM_TOKEN")
+            if token is not None and (not isinstance(token, str) or not re.fullmatch(r"[a-f0-9]{64}", token)):
+                raise ValueError("Invalid STREAM_TOKEN")
+            sock = socket.create_connection((host, port), timeout=5)
+            sock.settimeout(10)
+            # Authenticate before the response generator begins its work.
+            if token is not None:
+                sock.sendall(("OPS-STREAM " + token + "\n").encode("ascii"))
+        for line in lines:
+            if sock is not None:
+                sock.sendall((json.dumps(line, ensure_ascii=False) + "\n").encode("utf-8"))
+                time.sleep(rate)
+            out += line
+    except Exception as e:
+        print(e)
+        print("interrupted")
+    finally:
+        if sock is not None:
+            sock.close()
+    return out
 
 # load the instruction file
 # the file format is:
@@ -38,7 +68,7 @@ class LLM:
         self.messages = self.instruct
         self.context = []
         if "messages" in args:
-            self.context = args.get("messages", [])
+            self.context = list(chat_history(args["messages"]))
             self.messages += self.context
 
     def welcome(self, args):
@@ -50,33 +80,7 @@ class LLM:
         self.messages.append({"role": role, "content":content})
 
     def stream(self, args, lines):
-        out = ""
-        sock = None
-        host = args.get("STREAM_HOST", "")
-        port = int(args.get("STREAM_PORT") or "0")
-        try:
-            if host and port:
-                token = args.get("STREAM_TOKEN")
-                if token is not None and (not isinstance(token, str) or not re.fullmatch(r"[a-f0-9]{64}", token)):
-                    raise ValueError("Invalid STREAM_TOKEN")
-                sock = socket.create_connection((host, port), timeout=5)
-                sock.settimeout(10)
-                # Per-invocation capability supplied by Streamer, never a .env secret.
-                # Send before iterating: the model may take time to produce output.
-                if token is not None:
-                    sock.sendall(("OPS-STREAM " + token + "\n").encode("ascii"))
-            for line in lines:
-                if sock is not None:
-                    sock.sendall((json.dumps(line, ensure_ascii=False) + "\n").encode("utf-8"))
-                    time.sleep(self.rate)
-                out += line
-        except Exception as e:
-            print(e)
-            print("interrupted")
-        finally:
-            if sock is not None:
-                sock.close()
-        return out
+        return stream_output(args, lines, self.rate)
 
     def _ask(self, inp):
         self.messages.append({"role": "user", "content": inp})
